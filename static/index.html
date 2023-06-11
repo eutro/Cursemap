@@ -38,7 +38,7 @@
       const execute = document.getElementById("execute");
       const result = document.getElementById("result");
       execute.addEventListener("click", async function() {
-        const resp = await fetch("query", {
+        const resp = await fetch("../query.json", {
           method: "POST",
           body: input.value
         });

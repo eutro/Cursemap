@@ -1,5 +1,6 @@
 use actix_files::NamedFile;
 use anyhow::Context;
+use http::StatusCode;
 use core::fmt;
 use serde;
 use std::{
@@ -200,22 +201,25 @@ async fn main() -> anyhow::Result<()> {
     let fetcher = Arc::new(Mutex::new(update_db().await?));
     HttpServer::new(move || {
         let fetcher = fetcher.clone();
+        async fn default_handler(req: ServiceRequest) -> Result<ServiceResponse, Error> {
+            let (req, _) = req.into_parts();
+            let file = NamedFile::open_async("./static/404.html").await?;
+            let mut res = file.into_response(&req);
+            *res.status_mut() = StatusCode::NOT_FOUND;
+            Ok(ServiceResponse::new(req, res))
+        }
         App::new()
             .route(
-                "/query",
+                "/query.json",
                 web::post().to(move |sql| query(fetcher.clone(), sql)),
             )
-            .service(web::redirect("/", "index.html"))
+            .service(web::redirect("/", "/static/index.html"))
             .service(
-                actix_files::Files::new("/", "./static")
+                actix_files::Files::new("/static", "./static")
                     .use_last_modified(true)
-                    .default_handler(fn_service(|req: ServiceRequest| async {
-                        let (req, _) = req.into_parts();
-                        let file = NamedFile::open_async("./static/404.html").await?;
-                        let res = file.into_response(&req);
-                        Ok(ServiceResponse::new(req, res))
-                    })),
+                    .default_handler(fn_service(default_handler)),
             )
+            .default_service(fn_service(default_handler))
     })
     .bind((addr, port))?
     .run()

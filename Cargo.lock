@@ -429,6 +429,7 @@ dependencies = [
  "actix-files",
  "actix-web",
  "anyhow",
+ "http",
  "reqwest",
  "rusqlite",
  "serde",
