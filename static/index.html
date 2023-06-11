@@ -13,8 +13,31 @@
         padding-top: 1rem;
       }
 
-      #execute {
+      #schema {
+        display: flex;
+        flex-direction: row;
+      }
+
+      #schema code {
+        margin-right: 1rem;
+        padding: 0.5rem;
+        background: #d8d8d8;
+      }
+
+      #executions {
+        display: flex;
+        width: 100%;
+        flex-direction: row;
         margin-top: 0.5rem;
+      }
+
+      #execute {
+        margin-right: 1rem;
+      }
+
+      #history button {
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
       }
     </style>
     <title>Cursemap</title>
@@ -22,30 +45,55 @@
   <body>
     <div id="root">
       <h3>Schema</h3>
-      <code>CREATE TABLE IF NOT EXISTS versions &#40;<br>
-        &nbsp;&nbsp;id INT PRIMARY KEY,<br>
-        &nbsp;&nbsp;gameVersionTypeID INT,<br>
-        &nbsp;&nbsp;name TEXT,<br>
-        &nbsp;&nbsp;slug TEXT<br>
-        &#41;</code>
+      <div id="schema">
+        <code>CREATE TABLE IF NOT EXISTS versions &#40;<br>
+          &nbsp;&nbsp;id INT PRIMARY KEY,<br>
+          &nbsp;&nbsp;gameVersionTypeID INT,<br>
+          &nbsp;&nbsp;name TEXT,<br>
+          &nbsp;&nbsp;slug TEXT<br>
+          &#41;</code>
+        <code>CREATE TABLE IF NOT EXISTS versionTypes &#40;<br>
+          &nbsp;&nbsp;id INT PRIMARY KEY,<br>
+          &nbsp;&nbsp;name TEXT,<br>
+          &nbsp;&nbsp;slug TEXT<br>
+          &#41;</code>
+      </div>
       <h3>Query</h3>
       <textarea id="input" rows="8" cols="60" placeholder="SELECT * FROM versions"></textarea>
-      <div><button id="execute">Execute</button></div>
+      <div id="executions">
+        <div><button id="execute">Execute</button></div>
+        History:&nbsp;
+        <span id="history"></span>
+      </div>
       <pre id="result"></pre>
     </div>
     <script>
       const input = document.getElementById("input");
       const execute = document.getElementById("execute");
+      const history = document.getElementById("history");
       const result = document.getElementById("result");
       execute.addEventListener("click", async function() {
-        const resp = await fetch("../query.json", {
-          method: "POST",
-          body: input.value
-        });
-        if (resp.ok) {
-          result.innerText = JSON.stringify(await resp.json(), null, 2);
-        } else {
-          alert("Request failed: " + await resp.text());
+        execute.disabled = true;
+        try {
+          const query = input.value;
+          const resp = await fetch("../query.json", {
+            method: "POST",
+            body: query
+          });
+          if (resp.ok) {
+            result.innerText = JSON.stringify(await resp.json(), null, 2);
+            const historyButton = document.createElement("button")
+            historyButton.addEventListener("click", function() {
+              input.value = query;
+            });
+            historyButton.innerText = new Date().toLocaleTimeString()
+            historyButton.title = query;
+            history.appendChild(historyButton);
+          } else {
+            alert("Request failed: " + await resp.text());
+          }
+        } finally {
+          execute.disabled = false;
         }
       });
     </script>

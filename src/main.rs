@@ -1,7 +1,7 @@
 use actix_files::NamedFile;
 use anyhow::Context;
-use http::StatusCode;
 use core::fmt;
+use http::StatusCode;
 use serde;
 use std::{
     sync::Arc,
@@ -108,7 +108,7 @@ async fn perform_query<P: Params>(
 struct DataFetcher {
     conn: rusqlite::Connection,
     client: reqwest::Client,
-    req: reqwest::Request,
+    api_token: String,
     last_ts: Instant,
 }
 
@@ -125,7 +125,7 @@ impl DataFetcher {
 
     async fn fetch_and_load_data(&mut self) -> anyhow::Result<()> {
         #[derive(serde::Deserialize)]
-        struct Entry {
+        struct VersionsEntry {
             id: u64,
             #[serde(alias = "gameVersionTypeID")]
             game_version_type_id: u64,
@@ -133,21 +133,46 @@ impl DataFetcher {
             slug: String,
         }
 
+        #[derive(serde::Deserialize)]
+        struct VersionTypeEntry {
+            id: u64,
+            name: String,
+            slug: String,
+        }
+
         println!("Fetching API data");
-        let result = self
-            .client
-            .execute(self.req.try_clone().expect("Clonable request"))
+
+        let request = |url| {
+            self.client
+                .get(url)
+                .header("X-Api-Token", &self.api_token)
+                .send()
+        };
+        let versions = request("https://minecraft.curseforge.com/api/game/versions")
+            .await?
+            .json::<Vec<VersionsEntry>>()
+            .await?;
+        let version_types = request("https://minecraft.curseforge.com/api/game/version-types")
+            .await?
+            .json::<Vec<VersionTypeEntry>>()
             .await?;
         self.last_ts = Instant::now();
-        let json = result.json::<Vec<Entry>>().await?;
 
         let tx = self.conn.transaction()?;
-        tx.execute("DELETE FROM versions", ())?;
-        let mut stmt = tx.prepare_cached("INSERT INTO versions VALUES (?, ?, ?, ?)")?;
-        for entry in json {
-            stmt.execute((entry.id, entry.game_version_type_id, entry.name, entry.slug))?;
+        {
+            tx.execute("DELETE FROM versions", ())?;
+            let mut stmt = tx.prepare_cached("INSERT INTO versions VALUES (?, ?, ?, ?)")?;
+            for entry in versions {
+                stmt.execute((entry.id, entry.game_version_type_id, entry.name, entry.slug))?;
+            }
         }
-        std::mem::drop(stmt);
+        {
+            tx.execute("DELETE FROM versionTypes", ())?;
+            let mut stmt = tx.prepare_cached("INSERT INTO versionTypes VALUES (?, ?, ?)")?;
+            for entry in version_types {
+                stmt.execute((entry.id, entry.name, entry.slug))?;
+            }
+        }
         tx.commit()?;
         println!("Inserted into database");
 
@@ -169,20 +194,25 @@ async fn update_db() -> anyhow::Result<DataFetcher> {
          )",
         (),
     )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS versionTypes (\
+         id INT PRIMARY KEY,\
+         name TEXT,\
+         slug TEXT\
+         )",
+        (),
+    )?;
 
     let api_token = std::env::var("API_TOKEN").context("API_TOKEN not set")?;
 
-    let client = reqwest::Client::builder().build()?;
-    let req = client
-        .get("https://minecraft.curseforge.com/api/game/versions")
-        .header("X-Api-Token", api_token)
-        .build()?;
-
-    let mut fetcher = DataFetcher {
-        conn,
-        client,
-        req,
-        last_ts: Instant::now(),
+    let mut fetcher = {
+        let client = reqwest::Client::builder().build()?;
+        DataFetcher {
+            conn,
+            client,
+            api_token,
+            last_ts: Instant::now(),
+        }
     };
     fetcher.fetch_and_load_data().await?;
 
