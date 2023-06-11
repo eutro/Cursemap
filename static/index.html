@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+
+      #root {
+        display: flex;
+        flex-direction: column;
+        padding: 4rem;
+        padding-top: 1rem;
+      }
+
+      #execute {
+        margin-top: 0.5rem;
+      }
+    </style>
+    <title>Cursemap</title>
+  </head>
+  <body>
+    <div id="root">
+      <h3>Schema</h3>
+      <code>CREATE TABLE IF NOT EXISTS versions &#40;<br>
+        &nbsp;&nbsp;id INT PRIMARY KEY,<br>
+        &nbsp;&nbsp;gameVersionTypeID INT,<br>
+        &nbsp;&nbsp;name TEXT,<br>
+        &nbsp;&nbsp;slug TEXT<br>
+        &#41;</code>
+      <h3>Query</h3>
+      <textarea id="input" rows="8" cols="60" placeholder="SELECT * FROM versions"></textarea>
+      <div><button id="execute">Execute</button></div>
+      <pre id="result"></pre>
+    </div>
+    <script>
+      const input = document.getElementById("input");
+      const execute = document.getElementById("execute");
+      const result = document.getElementById("result");
+      execute.addEventListener("click", async function() {
+        const resp = await fetch("/query", {
+          method: "POST",
+          body: input.value
+        });
+        if (resp.ok) {
+          result.innerText = JSON.stringify(await resp.json(), null, 2);
+        } else {
+          alert("Request failed: " + await resp.text());
+        }
+      });
+    </script>
+  </body>
+</html>
